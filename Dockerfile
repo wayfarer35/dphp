@@ -14,11 +14,11 @@ RUN set -eux; \
     if [ -n "$SELECT_EXTENSIONS" ]; then \
         SEL=$(echo "$SELECT_EXTENSIONS" | tr ',' ' '); \
         echo "[builder] Installing extensions: $SEL"; \
-        CFLAGS="${CFLAGS:-} -Wno-error" \
-        CXXFLAGS="${CXXFLAGS:-} -Wno-error" \
-        IPE_DEBUG=1 \
-        IPE_ICU_EN_ONLY=1 \
-        IPE_ASPELL_LANGUAGES='en' \
+        export CFLAGS="${CFLAGS:-} -Wno-error"; \
+        export CXXFLAGS="${CXXFLAGS:-} -Wno-error"; \
+        export IPE_DEBUG=1; \
+        export IPE_ICU_EN_ONLY=1; \
+        export IPE_ASPELL_LANGUAGES='en'; \
         install-php-extensions $SEL; \
     else \
         echo "[builder] No SELECT_EXTENSIONS provided; skipping extension build"; \
@@ -32,7 +32,7 @@ RUN set -eux; \
         if [ -f "$f" ]; then \
             base=$(basename "$f"); \
             cp "$f" "/opt/php-extensions-available/$base"; \
-            ext=$(sed -n -e 's/^[[:space:]]*extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' -e 's/^[[:space:]]*zend_extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' "$f" | sed -E 's/.*/\L&/' | sed -E 's/.*/\0/' | sed -E 's/.*\\/([^/]+)\\.so$/\\1/' | sed -E 's/\\.so$//' | head -n1); \
+            ext=$(sed -n -e 's/^[[:space:]]*extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' -e 's/^[[:space:]]*zend_extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' "$f" | sed -E 's/.*/\L&/' | sed -E 's/.*\\/([^/]+)\\.so$/\\1/' | sed -E 's/\\.so$//' | head -n1); \
             if [ -z "$ext" ]; then \
                 ext=$(echo "$base" | sed -E 's/^[0-9]+-//' | sed -E 's/\\.ini$//'); \
             fi; \

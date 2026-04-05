@@ -1,0 +1,155 @@
+name: Build and publish Docker image
+
+on:
+  workflow_dispatch:
+    inputs:
+      php_versions:
+        description: "要构建的 PHP 版本，支持逗号或空格分隔，例如: 8.4,8.3"
+        required: false
+        default: "8.4"
+      push_image:
+        description: "是否推送到 GHCR"
+        required: false
+        type: boolean
+        default: true
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.vars.outputs.versions }}
+      push_image: ${{ steps.vars.outputs.push_image }}
+    steps:
+      - name: Resolve build matrix
+        id: vars
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PHP_VERSIONS: ${{ github.event.inputs.php_versions }}
+          INPUT_PUSH_IMAGE: ${{ github.event.inputs.push_image }}
+        run: |
+          set -euo pipefail
+
+          RAW_INPUT="${INPUT_PHP_VERSIONS:-8.4}"
+          if [ -z "$RAW_INPUT" ]; then
+            RAW_INPUT="8.4"
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PUSH_IMAGE="${INPUT_PUSH_IMAGE:-true}"
+          elif [ "$EVENT_NAME" = "push" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            PUSH_IMAGE="true"
+          else
+            PUSH_IMAGE="false"
+          fi
+
+          VERSIONS_JSON="$(printf '%s' "$RAW_INPUT" | tr ', ' '\n' | awk 'NF && !seen[$0]++' | jq -R . | jq -cs .)"
+
+          echo "versions=$VERSIONS_JSON" >> "$GITHUB_OUTPUT"
+          echo "push_image=$PUSH_IMAGE" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        php_version: ${{ fromJson(needs.prepare.outputs.versions) }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Show disk space before cleanup
+        run: df -h
+
+      - name: Free disk space on runner
+        shell: bash
+        run: |
+          set -eux
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet || true
+          docker system prune -af || true
+          df -h
+
+      - name: Log in to GitHub Container Registry
+        if: needs.prepare.outputs.push_image == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show build command
+        shell: bash
+        env:
+          PHP_VERSION: ${{ matrix.php_version }}
+        run: |
+          set -euo pipefail
+          chmod +x ./build.sh
+          ./build.sh "$PHP_VERSION" --image "$IMAGE_NAME" --dry-run
+
+      - name: Build image with retry
+        shell: bash
+        env:
+          PHP_VERSION: ${{ matrix.php_version }}
+        run: |
+          set -euo pipefail
+          chmod +x ./build.sh
+
+          max_attempts=3
+          attempt=1
+          until [ "$attempt" -gt "$max_attempts" ]; do
+            echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${PHP_VERSION}"
+            if ./build.sh "$PHP_VERSION" --image "$IMAGE_NAME"; then
+              break
+            fi
+
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "Build failed after ${max_attempts} attempts"
+              exit 1
+            fi
+
+            echo "Build failed, cleaning Docker cache and retrying..."
+            docker system prune -af || true
+            attempt=$((attempt + 1))
+          done
+
+          docker image inspect "${IMAGE_NAME}:${PHP_VERSION}" >/dev/null
+
+      - name: Push image to GHCR
+        if: needs.prepare.outputs.push_image == 'true'
+        shell: bash
+        env:
+          PHP_VERSION: ${{ matrix.php_version }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_NAME}:${PHP_VERSION}"
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+            docker tag "${IMAGE_NAME}:${PHP_VERSION}" "${IMAGE_NAME}:${RELEASE_TAG}-php${PHP_VERSION}"
+            docker push "${IMAGE_NAME}:${RELEASE_TAG}-php${PHP_VERSION}"
+          fi
+
+      - name: Show built images
+        if: always()
+        run: docker image ls "$IMAGE_NAME"
