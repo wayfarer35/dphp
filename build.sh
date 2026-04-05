@@ -22,40 +22,55 @@ PHP_DEFAULT_OS["8.5"]="bookworm"
 usage() {
         cat <<'EOF'
 Usage: build.sh <php_version> [options]
-       build.sh -v <php_version> [options]
+       build.sh [options] <php_version>
 
 Required:
-    <php_version>       PHP version, e.g. 8.4, 7.4
+    <php_version>             PHP version, e.g. 8.4, 7.4
 
 Options:
-    -i, --image <name>       Image name/repository (default: dphp), e.g. wayfarer35/dphp
-    -t, --tag <full_tag>     Full image tag override, e.g. wayfarer35/dphp:8.4
-    --extensions="a b c"    Explicit space- or comma-separated list of extensions to install (overrides other selection).
-    --exclude="a b c"       Exclude these extensions from the default full raw list (space- or comma-separated).
-    --include="a b c"       Include these extensions even if they are in the default not-install list
-    -d, --dry-run            Print the docker build command and selected extensions, do not execute.
-    --fail-on-generate       Exit with error if auto-generation of all-extensions.raw fails
-    -h, --help               Show this help and exit
+    -p, --php-version <ver>   PHP version, alternative to the positional argument
+    -v, --verbose             Enable verbose/streaming build logs
+    -i, --image <name>        Image name/repository (default: dphp), e.g. wayfarer35/dphp
+    -t, --tag <full_tag>      Full image tag override, e.g. wayfarer35/dphp:8.4
+    --extensions="a b c"     Explicit space- or comma-separated list of extensions to install (overrides other selection).
+    --exclude="a b c"        Exclude these extensions from the default full raw list (space- or comma-separated).
+    --include="a b c"        Include these extensions even if they are in the default not-install list
+    -d, --dry-run             Print the docker build command and selected extensions, do not execute.
+    --fail-on-generate        Exit with error if auto-generation of all-extensions.raw fails
+    -h, --help                Show this help and exit
 
 Examples:
     build.sh 8.4                                   # install default (all from all-extensions.raw)
-    build.sh 8.4 --image wayfarer35/dphp           # build as wayfarer35/dphp:8.4
+    build.sh 8.4 -v                                # verbose real-time logs
+    build.sh -v 8.4                                # verbose + compatible legacy style
+    build.sh --php-version 8.4 --image wayfarer35/dphp
     build.sh 8.4 --tag wayfarer35/dphp:8.4         # fully custom tag
     build.sh 8.4 --exclude="xdebug xhprof"
     build.sh 8.4 --extensions="pdo_mysql,redis"
     build.sh 8.4 --dry-run
-    build.sh -v 8.4                                # compatible legacy form
 EOF
         exit 1
 }
 
 # parse arguments
 IMAGE_NAME="${IMAGE_NAME:-dphp}"
+VERBOSE="${VERBOSE:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -v)
+        -p|--php-version)
             PHP_VERSION="$2"; shift 2;;
+        --php-version=*)
+            PHP_VERSION="${1#*=}"; shift;;
+        -v|--verbose)
+            VERBOSE=1
+            if [[ $# -gt 1 && -z "${PHP_VERSION:-}" && "$2" =~ ^[0-9]+\.[0-9]+$ ]]; then
+                PHP_VERSION="$2"
+                shift 2
+            else
+                shift
+            fi
+            ;;
         -i|--image)
             IMAGE_NAME="$2"; shift 2;;
         --image=*)
@@ -81,6 +96,8 @@ while [[ $# -gt 0 ]]; do
         *)
             if [[ -z "${PHP_VERSION:-}" ]]; then
                 PHP_VERSION="$1"
+                shift
+            elif [[ "${PHP_VERSION}" = "$1" ]]; then
                 shift
             else
                 echo "Unknown argument: $1" >&2
@@ -385,7 +402,13 @@ if ! $DOCKER_CMD info >/dev/null 2>&1; then
     fi
 fi
 
-BUILD_CMD="$DOCKER_CMD build --progress=plain --build-arg PHP_TAG=\"$PHP_TAG\""
+if [ -n "${VERBOSE:-}" ]; then
+    BUILD_PROGRESS="${DOCKER_BUILD_PROGRESS:-plain}"
+else
+    BUILD_PROGRESS="${DOCKER_BUILD_PROGRESS:-auto}"
+fi
+
+BUILD_CMD="$DOCKER_CMD build --progress=$BUILD_PROGRESS --build-arg PHP_TAG=\"$PHP_TAG\""
 if [ -n "$SELECT_EXTENSIONS" ]; then
     BUILD_CMD="$BUILD_CMD --build-arg SELECT_EXTENSIONS=\"$SELECT_EXTENSIONS\""
 fi
@@ -393,9 +416,38 @@ fi
 BUILD_CMD="$BUILD_CMD -t $IMAGE_TAG ."
 
 if [ -n "${DRY_RUN:-}" ]; then
-    echo "DRY-RUN:" 
+    echo "DRY-RUN:"
     echo "$BUILD_CMD"
+    if [ -z "${VERBOSE:-}" ]; then
+        echo "Tip: default mode keeps console output concise; use -v for full streaming logs."
+    fi
 else
-    # Execute the built command
-    eval "$BUILD_CMD"
+    DEFAULT_LOG_DIR="${BUILD_LOG_DIR:-$SCRIPT_DIR/.build-logs}"
+    mkdir -p "$DEFAULT_LOG_DIR"
+    DEFAULT_LOG_FILE="$DEFAULT_LOG_DIR/build-${PHP_VERSION}-$(date +%Y%m%d-%H%M%S).log"
+    LOG_FILE="${BUILD_LOG_FILE:-$DEFAULT_LOG_FILE}"
+    mkdir -p "$(dirname "$LOG_FILE")"
+
+    if [ -n "${VERBOSE:-}" ]; then
+        echo "Verbose logging enabled. Full log: $LOG_FILE"
+        if (set -o pipefail; eval "$BUILD_CMD" |& tee "$LOG_FILE"); then
+            echo "Build completed successfully. Full log saved to: $LOG_FILE"
+        else
+            status=$?
+            echo "Build failed (exit code: $status). Full log saved to: $LOG_FILE" >&2
+            exit $status
+        fi
+    else
+        echo "Concise logging enabled. Full log: $LOG_FILE"
+        if eval "$BUILD_CMD" >"$LOG_FILE" 2>&1; then
+            echo "Build completed successfully. Full log saved to: $LOG_FILE"
+        else
+            status=$?
+            echo "Build failed (exit code: $status). Showing the last 120 lines below:" >&2
+            tail -n 120 "$LOG_FILE" >&2 || true
+            echo >&2
+            echo "Tip: rerun with -v for full streaming logs, or inspect: $LOG_FILE" >&2
+            exit $status
+        fi
+    fi
 fi

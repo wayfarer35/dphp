@@ -39,7 +39,7 @@
 ```
 
 > 默认推荐直接使用第一个参数传版本号，例如 `./build.sh 8.4`。
-> 同时也兼容旧写法 `./build.sh -v 8.4`。
+> `-v` 现在用于**详细日志输出**；例如 `./build.sh 8.4 -v`。同时也兼容 `./build.sh -v 8.4` 这种写法。
 
 **必需参数：**
 
@@ -64,6 +64,8 @@
 
 | 参数 | 说明 |
 |------|------|
+| `-p, --php-version <ver>` | 用选项形式指定 PHP 版本，作用等同于位置参数 |
+| `-v, --verbose` | 输出详细构建日志；默认不开启，以避免日志过长被截断 |
 | `-i, --image <name>` | 自定义镜像名/仓库名，例如 `wayfarer35/dphp`，最终生成 `wayfarer35/dphp:<version>` |
 | `-t, --tag <full_tag>` | 直接指定完整 tag，例如 `wayfarer35/dphp:8.4` |
 | `--extensions="a b c"` | 显式指定要安装的扩展（覆盖自动选择） |
@@ -77,6 +79,9 @@
 ```bash
 # 构建 PHP 8.4 镜像（包含默认的完整扩展集）
 ./build.sh 8.4
+
+# 输出详细实时日志（调试 PECL / 网络问题时再开）
+./build.sh 8.4 -v
 
 # 只安装特定扩展
 ./build.sh 8.4 --extensions="pdo_mysql redis gd"
@@ -121,6 +126,28 @@ docker push wayfarer35/dphp:8.4
 > ```bash
 > DOCKER_CMD=podman ./build.sh 8.4 --image wayfarer35/dphp
 > ```
+
+### 日志输出控制 / 避免输出被截断
+
+默认情况下，`build.sh` 会采用**精简控制台输出**，并将完整日志写到：
+
+```bash
+.build-logs/
+```
+
+这样可以减少在 Docker / GitHub Actions 中出现：
+
+```text
+[output clipped, log limit 2MiB reached]
+```
+
+如果你正在排查某个扩展、PECL 下载失败或网络问题，再加 `-v` 输出详细实时日志：
+
+```bash
+./build.sh 8.4 -v
+```
+
+在 GitHub Actions 手动触发时，也可以把 `verbose` 选项切换为 `true`；平时建议保持默认的 `false`，避免日志过长导致真正错误信息被截断。
 
 ## 使用镜像
 

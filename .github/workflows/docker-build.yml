@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: true
+      verbose:
+        description: "是否输出详细构建日志（可能触发 Actions 日志截断）"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: docker-build-${{ github.ref }}
@@ -91,27 +96,40 @@ jobs:
         shell: bash
         env:
           TARGET_PHP_VERSION: ${{ matrix.php_version }}
+          BUILD_VERBOSE: ${{ github.event.inputs.verbose }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
-          ./build.sh "$TARGET_PHP_VERSION" --image "$IMAGE_NAME" --dry-run
+
+          args=("$TARGET_PHP_VERSION" "--image" "$IMAGE_NAME" "--dry-run")
+          if [ "${BUILD_VERBOSE:-false}" = "true" ]; then
+            args+=("-v")
+          fi
+
+          ./build.sh "${args[@]}"
 
       - name: Build image with retry
         shell: bash
         env:
           TARGET_PHP_VERSION: ${{ matrix.php_version }}
+          BUILD_VERBOSE: ${{ github.event.inputs.verbose }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
 
           log_file="build-${TARGET_PHP_VERSION}.log"
-          : > "$log_file"
+          export BUILD_LOG_FILE="$log_file"
+
+          args=("$TARGET_PHP_VERSION" "--image" "$IMAGE_NAME")
+          if [ "${BUILD_VERBOSE:-false}" = "true" ]; then
+            args+=("-v")
+          fi
 
           max_attempts=3
           attempt=1
           until [ "$attempt" -gt "$max_attempts" ]; do
             echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${TARGET_PHP_VERSION}" | tee -a "$log_file"
-            if ./build.sh "$TARGET_PHP_VERSION" --image "$IMAGE_NAME" |& tee -a "$log_file"; then
+            if ./build.sh "${args[@]}"; then
               break
             fi
 
