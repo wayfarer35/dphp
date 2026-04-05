@@ -64,6 +64,8 @@
 
 | 参数 | 说明 |
 |------|------|
+| `-i, --image <name>` | 自定义镜像名/仓库名，例如 `wayfarer35/dphp`，最终生成 `wayfarer35/dphp:<version>` |
+| `-t, --tag <full_tag>` | 直接指定完整 tag，例如 `wayfarer35/dphp:8.4` |
 | `--extensions="a b c"` | 显式指定要安装的扩展（覆盖自动选择） |
 | `--exclude="a b c"` | 从默认列表中排除指定扩展 |
 | `--include="a b c"` | 强制包含默认不安装列表中的扩展 |
@@ -82,11 +84,31 @@
 # 排除某些扩展
 ./build.sh 8.4 --exclude="xdebug xhprof"
 
+# 构建为 Docker Hub 目标仓库 tag
+./build.sh 8.4 --image wayfarer35/dphp
+
+# 或直接指定完整 tag
+./build.sh 8.4 --tag wayfarer35/dphp:8.4
+
 # 预览构建命令
 ./build.sh 8.4 --dry-run
 ```
 
-构建完成后镜像标签格式为 `dphp:<version>`，例如 `dphp:8.4`。
+默认情况下，构建完成后的镜像标签格式为 `dphp:<version>`，例如 `dphp:8.4`。
+
+如果要直接推送到 Docker Hub，可以在构建时指定：
+
+```bash
+./build.sh 8.4 --image wayfarer35/dphp
+docker push wayfarer35/dphp:8.4
+```
+
+或者直接指定完整 tag：
+
+```bash
+./build.sh 8.4 --tag wayfarer35/dphp:8.4
+docker push wayfarer35/dphp:8.4
+```
 
 ## 使用镜像
 
