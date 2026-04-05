@@ -35,10 +35,22 @@
 ### 构建命令
 
 ```bash
-./build.sh -v <php_version> [options]
+./build.sh <php_version> [options]
 ```
 
-### 生成扩展数据（首次或更新时）
+> 默认推荐直接使用第一个参数传版本号，例如 `./build.sh 8.4`。
+> 同时也兼容旧写法 `./build.sh -v 8.4`。
+
+**必需参数：**
+
+| 参数 | 说明 |
+|------|------|
+| `<version>` | PHP 版本，如 `8.4`, `7.4` |
+
+### 更新扩展数据（可选）
+
+如果扩展数据文件不存在，`build.sh` 会自动调用 `./generate-extension-raw.sh` 生成。
+只有在你想**手动刷新到最新数据**时，才需要执行下面命令：
 
 ```bash
 # 从 mlocati/docker-php-extension-installer 获取最新扩展数据
@@ -47,12 +59,6 @@
 # 强制从远程刷新
 ./generate-extension-raw.sh --force-download
 ```
-
-**必需参数：**
-
-| 参数 | 说明 |
-|------|------|
-| `-v <version>` | PHP 版本，如 `8.4`, `7.4` |
 
 **可选参数：**
 
@@ -68,16 +74,16 @@
 
 ```bash
 # 构建 PHP 8.4 镜像（包含默认的完整扩展集）
-./build.sh -v 8.4
+./build.sh 8.4
 
 # 只安装特定扩展
-./build.sh -v 8.4 --extensions="pdo_mysql redis gd"
+./build.sh 8.4 --extensions="pdo_mysql redis gd"
 
 # 排除某些扩展
-./build.sh -v 8.4 --exclude="xdebug xhprof"
+./build.sh 8.4 --exclude="xdebug xhprof"
 
 # 预览构建命令
-./build.sh -v 8.4 --dry-run
+./build.sh 8.4 --dry-run
 ```
 
 构建完成后镜像标签格式为 `dphp:<version>`，例如 `dphp:8.4`。

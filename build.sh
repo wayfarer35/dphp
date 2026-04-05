@@ -21,10 +21,11 @@ PHP_DEFAULT_OS["8.5"]="bookworm"
 
 usage() {
         cat <<'EOF'
-Usage: build.sh -v <php_version> [options]
+Usage: build.sh <php_version> [options]
+       build.sh -v <php_version> [options]
 
 Required:
-    -v <php_version>    PHP version, e.g. 8.4, 7.4
+    <php_version>       PHP version, e.g. 8.4, 7.4
 
 Options:
     --extensions="a b c"   Explicit space- or comma-separated list of extensions to install (overrides other selection).
@@ -35,10 +36,11 @@ Options:
     -h, --help             Show this help and exit
 
 Examples:
-    build.sh -v 8.4                                # install default (all from all-extensions.raw)
-    build.sh -v 8.4 --exclude="xdebug xhprof"
-    build.sh -v 8.4 --extensions="pdo_mysql,redis"
-    build.sh -v 8.4 --dry-run
+    build.sh 8.4                                   # install default (all from all-extensions.raw)
+    build.sh 8.4 --exclude="xdebug xhprof"
+    build.sh 8.4 --extensions="pdo_mysql,redis"
+    build.sh 8.4 --dry-run
+    build.sh -v 8.4                                # compatible legacy form
 EOF
         exit 1
 }
@@ -60,8 +62,17 @@ while [[ $# -gt 0 ]]; do
             FAIL_ON_GENERATE=1; shift;;
         -h|--help)
             usage;;
-        *)
+        -*)
             echo "Unknown argument: $1" >&2; usage;;
+        *)
+            if [[ -z "${PHP_VERSION:-}" ]]; then
+                PHP_VERSION="$1"
+                shift
+            else
+                echo "Unknown argument: $1" >&2
+                usage
+            fi
+            ;;
     esac
 done
 
