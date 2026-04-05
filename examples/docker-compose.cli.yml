@@ -1,0 +1,15 @@
+# 示例：php-cli 模式
+# 用于进入交互式 shell、运行 PHP 脚本、Composer 命令、单元测试等
+
+services:
+  php-cli:
+    image: dphp:8.4
+    container_name: my_php_cli
+    environment:
+      - EXTENSION_PDO_MYSQL=1
+      - EXTENSION_REDIS=1
+      - EXTENSION_MBSTRING=1
+    volumes:
+      - ../src:/www
+    # 覆盖默认的 php-fpm 命令，进入交互式 shell
+    command: ["/bin/bash"]

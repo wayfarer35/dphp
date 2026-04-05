@@ -1,0 +1,48 @@
+# 示例：php-serve 模式
+# 用于常驻后台进程，如 Workerman、Swoole HTTP Server、Laravel Octane 等
+
+services:
+  # Swoole HTTP Server 示例
+  swoole-server:
+    image: dphp:8.4
+    container_name: my_swoole_server
+    environment:
+      - EXTENSION_SWOOLE=1
+      - EXTENSION_PDO_MYSQL=1
+      - EXTENSION_REDIS=1
+    volumes:
+      - ../src:/www
+    ports:
+      - "9501:9501"
+    # 覆盖 entrypoint 默认的 php-fpm，改为运行 Swoole 服务
+    command: ["php", "/www/server.php"]
+    restart: unless-stopped
+
+  # Workerman 示例
+  workerman:
+    image: dphp:8.4
+    container_name: my_workerman
+    environment:
+      - EXTENSION_EVENT=1
+      - EXTENSION_PDO_MYSQL=1
+      - EXTENSION_REDIS=1
+    volumes:
+      - ../src:/www
+    ports:
+      - "8080:8080"
+    command: ["php", "/www/start.php", "start"]
+    restart: unless-stopped
+
+  # PHP 内置开发服务器示例
+  php-builtin:
+    image: dphp:8.4
+    container_name: my_php_server
+    environment:
+      - EXTENSION_PDO_MYSQL=1
+      - EXTENSION_GD=1
+    volumes:
+      - ../src:/www
+    ports:
+      - "8000:8000"
+    command: ["php", "-S", "0.0.0.0:8000", "-t", "/www/public"]
+    restart: unless-stopped

@@ -1,0 +1,36 @@
+# 示例：php-fpm 模式（默认）
+# 配合 nginx 使用的典型 Web 开发场景
+
+services:
+  php:
+    image: dphp:8.4
+    container_name: my_php_fpm
+    environment:
+      - EXTENSION_PDO_MYSQL=1
+      - EXTENSION_REDIS=1
+      - EXTENSION_GD=1
+      - EXTENSION_INTL=1
+      - EXTENSION_BCMATH=1
+      - EXTENSION_OPCACHE=1
+    volumes:
+      - ../src:/www
+    ports:
+      - "9000:9000"
+    networks:
+      - webnet
+
+  nginx:
+    image: nginx:stable
+    container_name: my_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../src:/www
+    depends_on:
+      - php
+    networks:
+      - webnet
+
+networks:
+  webnet:
