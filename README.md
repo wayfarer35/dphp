@@ -110,6 +110,18 @@ docker push wayfarer35/dphp:8.4
 docker push wayfarer35/dphp:8.4
 ```
 
+> 如果当前环境不允许脚本自动使用 `sudo`，请直接手动运行：
+>
+> ```bash
+> sudo ./build.sh 8.4 --image wayfarer35/dphp
+> ```
+>
+> 或者先将当前用户加入 `docker` 组；在 Fedora 等环境里，也可以用：
+>
+> ```bash
+> DOCKER_CMD=podman ./build.sh 8.4 --image wayfarer35/dphp
+> ```
+
 ## 使用镜像
 
 镜像入口脚本通过 `EXTENSION_<NAME>=1` 环境变量控制启用哪些扩展。

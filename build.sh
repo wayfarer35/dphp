@@ -362,12 +362,25 @@ else
 fi
 echo "Building Docker image: $IMAGE_TAG"
 
-DOCKER_CMD="docker"
-if ! docker info >/dev/null 2>&1; then
-    if command -v sudo >/dev/null 2>&1; then
+DOCKER_CMD="${DOCKER_CMD:-docker}"
+DOCKER_BIN="${DOCKER_CMD%% *}"
+
+if ! command -v "$DOCKER_BIN" >/dev/null 2>&1; then
+    echo "Error: '$DOCKER_BIN' command not found."
+    echo "Tip: install Docker/Podman, or set DOCKER_CMD explicitly, for example: DOCKER_CMD=podman ./build.sh 8.4"
+    exit 1
+fi
+
+if ! $DOCKER_CMD info >/dev/null 2>&1; then
+    if [ "$DOCKER_CMD" = "docker" ] && command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then
         DOCKER_CMD="sudo docker"
     else
-        echo "Error: docker requires root privileges. Please add your user to the docker group or run with sudo."
+        echo "Error: cannot access the container engine using '$DOCKER_CMD'." >&2
+        echo "Please ensure Docker/Podman is running and your current user has permission to access it." >&2
+        echo "You can choose one of these options:" >&2
+        echo "  1) Add your user to the docker group" >&2
+        echo "  2) Run manually with sudo: sudo ./build.sh $PHP_VERSION ..." >&2
+        echo "  3) Use another command, e.g. DOCKER_CMD=podman ./build.sh $PHP_VERSION" >&2
         exit 1
     fi
 fi
