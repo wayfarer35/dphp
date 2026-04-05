@@ -12,18 +12,13 @@ on:
         required: false
         type: boolean
         default: true
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
-  pull_request:
 
 concurrency:
   group: docker-build-${{ github.ref }}
   cancel-in-progress: false
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   IMAGE_NAME: ghcr.io/${{ github.repository }}
   DOCKER_BUILDKIT: "1"
 
@@ -49,13 +44,7 @@ jobs:
             RAW_INPUT="8.4"
           fi
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PUSH_IMAGE="${INPUT_PUSH_IMAGE:-true}"
-          elif [ "$EVENT_NAME" = "push" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            PUSH_IMAGE="true"
-          else
-            PUSH_IMAGE="false"
-          fi
+          PUSH_IMAGE="${INPUT_PUSH_IMAGE:-true}"
 
           VERSIONS_JSON="$(printf '%s' "$RAW_INPUT" | tr ', ' '\n' | awk 'NF && !seen[$0]++' | jq -R . | jq -cs .)"
 
@@ -115,25 +104,36 @@ jobs:
           set -euo pipefail
           chmod +x ./build.sh
 
+          log_file="build-${PHP_VERSION}.log"
+          : > "$log_file"
+
           max_attempts=3
           attempt=1
           until [ "$attempt" -gt "$max_attempts" ]; do
-            echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${PHP_VERSION}"
-            if ./build.sh "$PHP_VERSION" --image "$IMAGE_NAME"; then
+            echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${PHP_VERSION}" | tee -a "$log_file"
+            if ./build.sh "$PHP_VERSION" --image "$IMAGE_NAME" |& tee -a "$log_file"; then
               break
             fi
 
             if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "Build failed after ${max_attempts} attempts"
+              echo "Build failed after ${max_attempts} attempts" | tee -a "$log_file"
               exit 1
             fi
 
-            echo "Build failed, cleaning Docker cache and retrying..."
-            docker system prune -af || true
+            echo "Build failed, cleaning Docker cache and retrying..." | tee -a "$log_file"
+            docker system prune -af |& tee -a "$log_file" || true
             attempt=$((attempt + 1))
           done
 
           docker image inspect "${IMAGE_NAME}:${PHP_VERSION}" >/dev/null
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-php${{ matrix.php_version }}
+          path: build-${{ matrix.php_version }}.log
+          if-no-files-found: ignore
 
       - name: Push image to GHCR
         if: needs.prepare.outputs.push_image == 'true'
