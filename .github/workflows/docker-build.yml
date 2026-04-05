@@ -90,28 +90,28 @@ jobs:
       - name: Show build command
         shell: bash
         env:
-          PHP_VERSION: ${{ matrix.php_version }}
+          TARGET_PHP_VERSION: ${{ matrix.php_version }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
-          ./build.sh "$PHP_VERSION" --image "$IMAGE_NAME" --dry-run
+          ./build.sh "$TARGET_PHP_VERSION" --image "$IMAGE_NAME" --dry-run
 
       - name: Build image with retry
         shell: bash
         env:
-          PHP_VERSION: ${{ matrix.php_version }}
+          TARGET_PHP_VERSION: ${{ matrix.php_version }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
 
-          log_file="build-${PHP_VERSION}.log"
+          log_file="build-${TARGET_PHP_VERSION}.log"
           : > "$log_file"
 
           max_attempts=3
           attempt=1
           until [ "$attempt" -gt "$max_attempts" ]; do
-            echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${PHP_VERSION}" | tee -a "$log_file"
-            if ./build.sh "$PHP_VERSION" --image "$IMAGE_NAME" |& tee -a "$log_file"; then
+            echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${TARGET_PHP_VERSION}" | tee -a "$log_file"
+            if ./build.sh "$TARGET_PHP_VERSION" --image "$IMAGE_NAME" |& tee -a "$log_file"; then
               break
             fi
 
@@ -125,7 +125,7 @@ jobs:
             attempt=$((attempt + 1))
           done
 
-          docker image inspect "${IMAGE_NAME}:${PHP_VERSION}" >/dev/null
+          docker image inspect "${IMAGE_NAME}:${TARGET_PHP_VERSION}" >/dev/null
 
       - name: Upload build log
         if: always()
@@ -139,15 +139,15 @@ jobs:
         if: needs.prepare.outputs.push_image == 'true'
         shell: bash
         env:
-          PHP_VERSION: ${{ matrix.php_version }}
+          TARGET_PHP_VERSION: ${{ matrix.php_version }}
         run: |
           set -euo pipefail
-          docker push "${IMAGE_NAME}:${PHP_VERSION}"
+          docker push "${IMAGE_NAME}:${TARGET_PHP_VERSION}"
 
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             RELEASE_TAG="${GITHUB_REF#refs/tags/}"
-            docker tag "${IMAGE_NAME}:${PHP_VERSION}" "${IMAGE_NAME}:${RELEASE_TAG}-php${PHP_VERSION}"
-            docker push "${IMAGE_NAME}:${RELEASE_TAG}-php${PHP_VERSION}"
+            docker tag "${IMAGE_NAME}:${TARGET_PHP_VERSION}" "${IMAGE_NAME}:${RELEASE_TAG}-php${TARGET_PHP_VERSION}"
+            docker push "${IMAGE_NAME}:${RELEASE_TAG}-php${TARGET_PHP_VERSION}"
           fi
 
       - name: Show built images
