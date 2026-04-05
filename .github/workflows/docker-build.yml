@@ -108,7 +108,7 @@ jobs:
 
           ./build.sh "${args[@]}"
 
-      - name: Build image with retry
+      - name: Build image
         shell: bash
         env:
           TARGET_PHP_VERSION: ${{ matrix.php_version }}
@@ -125,24 +125,7 @@ jobs:
             args+=("-v")
           fi
 
-          max_attempts=3
-          attempt=1
-          until [ "$attempt" -gt "$max_attempts" ]; do
-            echo "==> Build attempt ${attempt}/${max_attempts} for PHP ${TARGET_PHP_VERSION}" | tee -a "$log_file"
-            if ./build.sh "${args[@]}"; then
-              break
-            fi
-
-            if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "Build failed after ${max_attempts} attempts" | tee -a "$log_file"
-              exit 1
-            fi
-
-            echo "Build failed, cleaning Docker cache and retrying..." | tee -a "$log_file"
-            docker system prune -af |& tee -a "$log_file" || true
-            attempt=$((attempt + 1))
-          done
-
+          ./build.sh "${args[@]}"
           docker image inspect "${IMAGE_NAME}:${TARGET_PHP_VERSION}" >/dev/null
 
       - name: Upload build log
