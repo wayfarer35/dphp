@@ -2,6 +2,7 @@ ARG PHP_TAG=8.4-fpm-bookworm
 
 # Builder stage: compile/install extensions with build deps
 FROM php:${PHP_TAG} AS builder
+ARG PHP_TAG
 
 # Install dependencies for building extensions
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
@@ -13,6 +14,10 @@ ARG SELECT_EXTENSIONS=""
 RUN set -eux; \
     if [ -n "$SELECT_EXTENSIONS" ]; then \
         SEL=$(echo "$SELECT_EXTENSIONS" | tr ',' ' '); \
+        if [ "${PHP_TAG%%-*}" = "8.0" ] && printf '%s\n' "$SEL" | grep -Eq '(^|[[:space:]])phalcon([[:space:]]|$)'; then \
+            SEL=$(printf '%s\n' "$SEL" | sed -E 's/(^|[[:space:]])phalcon([[:space:]]|$)/\1phalcon-5.10.0\2/g' | xargs); \
+            echo "[builder] Pinning phalcon to 5.10.0 for PHP 8.0"; \
+        fi; \
         echo "[builder] Installing extensions: $SEL"; \
         export CFLAGS="${CFLAGS:-} -Wno-error"; \
         export CXXFLAGS="${CXXFLAGS:-} -Wno-error"; \
