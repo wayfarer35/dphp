@@ -69,6 +69,17 @@ derive_shortname() {
   echo "$base" | tr '[:upper:]' '[:lower:]'
 }
 
+is_loaded_module() {
+  ext="$1"
+  if ! command -v php >/dev/null 2>&1; then
+    return 1
+  fi
+  if php -m 2>/dev/null | grep -F -i -x "$ext" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 # Helper: enable one extension by creating symlink (preserve original filename)
 enable_ext() {
   ext="$1"
@@ -102,12 +113,15 @@ enable_ext() {
   for f in "$AVAILABLE_DIR"/*.ini; do
     [ -f "$f" ] || continue
     printf '%s\n' "scanning:$f" >> "$attempts_tmp"
-    short=$(derive_shortname "$f")
-    if [ "$short" = "$ext" ]; then
-      link_ini_file "$f"
-      echo "[entrypoint] enabled extension (derived): $ext -> $(basename "$f")"
-      rm -f "$attempts_tmp"
-      return 0
+    if short=$(derive_shortname "$f"); then
+      if [ "$short" = "$ext" ]; then
+        link_ini_file "$f"
+        echo "[entrypoint] enabled extension (derived): $ext -> $(basename "$f")"
+        rm -f "$attempts_tmp"
+        return 0
+      fi
+    else
+      printf '%s\n' "derive-no-match:$f" >> "$attempts_tmp"
     fi
   done
   # Last resort: try a fuzzy filename match.
@@ -122,6 +136,11 @@ enable_ext() {
     rm -f "$attempts_tmp"
     return 0
   done
+  if is_loaded_module "$ext"; then
+    echo "[entrypoint] extension already loaded by base image: $ext"
+    rm -f "$attempts_tmp"
+    return 0
+  fi
   echo "[entrypoint] warning: extension ini not found for '$ext'" >&2
   echo "[entrypoint][debug] attempted candidates:" >&2
   sed -n '1,200p' "$attempts_tmp" >&2 || true

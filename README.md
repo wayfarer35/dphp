@@ -254,6 +254,8 @@ docker run -d \
 
 通过环境变量 `EXTENSION_<NAME>=1` 启用扩展，扩展名全大写，非字母数字用 `_` 替换：
 
+`EXTENSION_*` 只应该用于需要显式链接 ini 的扩展。像 `dom`、`xmlreader`、`xmlwriter`、`SimpleXML`、`curl`、`fileinfo` 这类已经由基础镜像默认加载的模块，不需要再写入环境变量；如果误写进去，入口脚本现在会识别为“已由基础镜像加载”并直接跳过，不会导致容器退出。
+
 启用某些扩展时，入口脚本会一并打开它们的运行时依赖；例如 `redis` 会自动补上 `igbinary` 和 `msgpack`。
 
 ```bash
