@@ -18,8 +18,43 @@ mkdir -p "$PHP_CONF_DIR"
 lookup_map() {
   name="$1"
   if [ -f "$MAPPING_FILE" ]; then
-    awk -F= -v key="$name" '$1==key {print $2; exit}' "$MAPPING_FILE"
+    exact=$(awk -F= -v key="$name" '$1==key {print $2; exit}' "$MAPPING_FILE")
+    if [ -n "$exact" ]; then
+      printf '%s\n' "$exact"
+      return 0
+    fi
+    awk -F= -v key="$name" '
+      function normalize(value) {
+        sub(/^[0-9]+-/, "", value)
+        sub(/^docker-php-ext-/, "", value)
+        sub(/\.ini$/, "", value)
+        return value
+      }
+      normalize($1) == key || normalize($2) == key { print $2; exit }
+    ' "$MAPPING_FILE"
   fi
+}
+
+link_ini_file() {
+  src="$1"
+  base=$(basename "$src")
+  dest="$PHP_CONF_DIR/$base"
+  if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$src")" ]; then
+    return 0
+  fi
+  ln -sf "$src" "$dest"
+  return 0
+}
+
+expand_dependencies() {
+  ext="$1"
+  case "$ext" in
+    redis)
+      printf '%s\n' igbinary
+      printf '%s\n' msgpack
+      ;;
+  esac
+  printf '%s\n' "$ext"
 }
 
 # Fallback: derive short name from ini file content (portable, avoids GNU-only sed extensions)
@@ -42,13 +77,7 @@ enable_ext() {
   if [ -n "$file" ]; then
     printf '%s\n' "mapping:$file" >> "$attempts_tmp"
     if [ -f "$AVAILABLE_DIR/$file" ]; then
-      dest="$PHP_CONF_DIR/$file"
-      # if already linked to the same source, skip
-      if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$AVAILABLE_DIR/$file")" ]; then
-        rm -f "$attempts_tmp"
-        return 0
-      fi
-      ln -sf "$AVAILABLE_DIR/$file" "$dest"
+      link_ini_file "$AVAILABLE_DIR/$file"
       echo "[entrypoint] enabled extension: $ext -> $file"
       rm -f "$attempts_tmp"
       return 0
@@ -57,18 +86,15 @@ enable_ext() {
       printf '%s\n' "mapping-file-missing:$AVAILABLE_DIR/$file" >> "$attempts_tmp"
     fi
   fi
-  # fallback: try to find a matching file by pattern
-  for f in "$AVAILABLE_DIR"/*"$ext"*.ini "$AVAILABLE_DIR"/*"-$ext".ini "$AVAILABLE_DIR"/${ext}.ini; do
-    [ -f "$f" ] || (printf '%s\n' "pattern-no-file:$f" >> "$attempts_tmp" && continue)
-    printf '%s\n' "pattern:$f" >> "$attempts_tmp"
-    base=$(basename "$f")
-    dest="$PHP_CONF_DIR/$base"
-    if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$f")" ]; then
-      rm -f "$attempts_tmp"
-      return 0
+  # Prefer exact filename matches before any fuzzy fallback.
+  for f in "$AVAILABLE_DIR"/docker-php-ext-"$ext".ini "$AVAILABLE_DIR"/"$ext".ini; do
+    if [ ! -f "$f" ]; then
+      printf '%s\n' "exact-no-file:$f" >> "$attempts_tmp"
+      continue
     fi
-    ln -sf "$f" "$dest"
-    echo "[entrypoint] enabled extension (fallback): $ext -> $base"
+    printf '%s\n' "exact:$f" >> "$attempts_tmp"
+    link_ini_file "$f"
+    echo "[entrypoint] enabled extension (exact): $ext -> $(basename "$f")"
     rm -f "$attempts_tmp"
     return 0
   done
@@ -78,17 +104,23 @@ enable_ext() {
     printf '%s\n' "scanning:$f" >> "$attempts_tmp"
     short=$(derive_shortname "$f")
     if [ "$short" = "$ext" ]; then
-      base=$(basename "$f")
-      dest="$PHP_CONF_DIR/$base"
-      if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$(readlink -f "$f")" ]; then
-        rm -f "$attempts_tmp"
-        return 0
-      fi
-      ln -sf "$f" "$dest"
-      echo "[entrypoint] enabled extension (derived): $ext -> $base"
+      link_ini_file "$f"
+      echo "[entrypoint] enabled extension (derived): $ext -> $(basename "$f")"
       rm -f "$attempts_tmp"
       return 0
     fi
+  done
+  # Last resort: try a fuzzy filename match.
+  for f in "$AVAILABLE_DIR"/*"-$ext".ini "$AVAILABLE_DIR"/*"$ext"*.ini; do
+    if [ ! -f "$f" ]; then
+      printf '%s\n' "pattern-no-file:$f" >> "$attempts_tmp"
+      continue
+    fi
+    printf '%s\n' "pattern:$f" >> "$attempts_tmp"
+    link_ini_file "$f"
+    echo "[entrypoint] enabled extension (fallback): $ext -> $(basename "$f")"
+    rm -f "$attempts_tmp"
+    return 0
   done
   echo "[entrypoint] warning: extension ini not found for '$ext'" >&2
   echo "[entrypoint][debug] attempted candidates:" >&2
@@ -110,7 +142,7 @@ env | while IFS='=' read -r name value; do
       case "$value" in
         1|true|TRUE)
           ext=$(echo "${name#EXTENSION_}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_]+/_/g')
-          echo "$ext" >> "$enabled_tmp"
+          expand_dependencies "$ext" >> "$enabled_tmp"
           ;;
       esac
       ;;

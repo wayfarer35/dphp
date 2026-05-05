@@ -254,6 +254,8 @@ docker run -d \
 
 通过环境变量 `EXTENSION_<NAME>=1` 启用扩展，扩展名全大写，非字母数字用 `_` 替换：
 
+启用某些扩展时，入口脚本会一并打开它们的运行时依赖；例如 `redis` 会自动补上 `igbinary` 和 `msgpack`。
+
 ```bash
 EXTENSION_PDO_MYSQL=1
 EXTENSION_REDIS=1

@@ -37,9 +37,15 @@ RUN set -eux; \
         if [ -f "$f" ]; then \
             base=$(basename "$f"); \
             cp "$f" "/opt/php-extensions-available/$base"; \
-            ext=$(sed -n -e 's/^[[:space:]]*extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' -e 's/^[[:space:]]*zend_extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' "$f" | sed -E 's/.*/\L&/' | sed -E 's/.*\\/([^/]+)\\.so$/\\1/' | sed -E 's/\\.so$//' | head -n1); \
-            if [ -z "$ext" ]; then \
-                ext=$(echo "$base" | sed -E 's/^[0-9]+-//' | sed -E 's/\\.ini$//'); \
+            ext=$(sed -n \
+                -e 's/^[[:space:]]*extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' \
+                -e 's/^[[:space:]]*zend_extension[[:space:]]*=[[:space:]]*\(.*\)/\1/p' \
+                "$f" | head -n1 | tr '[:upper:]' '[:lower:]'); \
+            if [ -n "$ext" ]; then \
+                ext=$(basename "$ext"); \
+                ext=$(echo "$ext" | sed -E 's/\.so$//'); \
+            else \
+                ext=$(echo "$base" | sed -E 's/^[0-9]+-//' | sed -E 's/^docker-php-ext-//' | sed -E 's/\.ini$//'); \
             fi; \
             echo "$ext=$base" >> /opt/php-extensions-available/extensions.map; \
         fi; \
